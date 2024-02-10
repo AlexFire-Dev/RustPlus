@@ -8,23 +8,28 @@ class DataBase:
         port = notification["port"]
         address = f"{ip}:{port}"
         ntype = notification["type"]
-        print(address, ntype)
 
         if ntype == "server":
             if address not in self.memory.keys():
                 self.memory[address] = {
+                    "ip": ip,
+                    "port": port,
                     "name": notification["name"],
                     "url": notification["url"],
                     "player_id": notification["playerId"],
                     "player_token": notification["playerToken"],
-                    "entities": {}
+                    "entities": {},
+                    "type": ntype
                 }
+                return self.memory[address]
         elif ntype == "entity":
             entity_id = notification["entityId"]
             if entity_id not in self.memory[address]["entities"].keys():
                 self.memory[address]["entities"][entity_id] = {
-                    "type": notification["entityType"],
-                    "name": notification["entityName"]
+                    "address": address,
+                    "entity_id": entity_id,
+                    "entity_type": notification["entityType"],
+                    "name": notification["entityName"],
+                    "type": ntype
                 }
-
-        print(self.memory)
+                return self.memory[address]["entities"][entity_id]
