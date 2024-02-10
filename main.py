@@ -1,4 +1,7 @@
+import json
 import time
+
+import asyncio
 
 import discord
 from discord import Message, Intents
@@ -40,16 +43,17 @@ class MyClient(discord.Client):
     async def on_message(self, message: Message):
         if message.author.bot:
             if message.author == self.user:
-                time.sleep(5)
+                await asyncio.sleep(60)
                 await message.delete()
 
             return
 
         print('Message:', f'Text: {message.content}', f'Server: {message.guild}')
 
-        # if message.content.startswith(f'{PREFIX}hello'):
-        #     await commands.hello_world(message)
-        #     return
+        if message.content.startswith(f'memory'):
+            await message.delete()
+            await message.channel.send(json.dumps(self.database.memory, indent=4))
+            return
 
 
 intents = discord.Intents.default()
