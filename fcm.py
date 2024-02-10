@@ -24,7 +24,4 @@ class FCM(FCMListener):
         self._push_listener.listen(callback=self.on_notification)
 
     def on_notification(self, obj, notification, data_message):
-        # try:
         self.callback(json.loads(notification.get("data").get("body")))
-        # except Exception as error:
-        #     print(f"Error: {error}")

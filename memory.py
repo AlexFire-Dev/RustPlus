@@ -1,6 +1,18 @@
+import json
+
+
 class DataBase:
     def __init__(self):
         self.memory: dict = {}
+
+    def save_memory(self):
+        with open("conf/memory.json", "w") as file:
+            json.dump(self.memory, fp=file, indent=2)
+        print("Memory dumped")
+
+    def load_memory(self):
+        temp = json.load(open("conf/memory.json", "r"))
+        self.memory = temp
 
     def add_record(self, notification: dict):
 
@@ -30,6 +42,7 @@ class DataBase:
                     "entity_id": entity_id,
                     "entity_type": notification["entityType"],
                     "name": notification["entityName"],
-                    "type": ntype
+                    "type": ntype,
+                    "value": False
                 }
                 return self.memory[address]["entities"][entity_id]

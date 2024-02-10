@@ -2,3 +2,4 @@
 .venv/
 
 conf/rustplus.py.config.json
+conf/memory.json
