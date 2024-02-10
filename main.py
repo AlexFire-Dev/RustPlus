@@ -1,6 +1,6 @@
 import json
 import time
-import sys
+import sys, os
 
 import asyncio
 
@@ -9,12 +9,13 @@ from discord import Message, Intents
 
 from rustplus import RustSocket
 from rustplus import EntityEvent, TeamEvent, ChatEvent
+from rustplus import RustTime
 
-from conf import conf
 from fcm import FCM, fcm_details
 from memory import DataBase
 
-BOT_TOKEN = conf.BOT_TOKEN
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 
 class MyClient(discord.Client):
@@ -30,14 +31,30 @@ class MyClient(discord.Client):
 
         try:
             info = await socket.get_entity_info(int(entity_id))
-            print(f'Entity {entity_id} succeeded')
+            print(f"Entity {entity_id} succeeded")
             result = info
         except Exception as e:
-            print(f'Entity {entity_id} failed')
+            print(f"Entity {entity_id} failed")
             result = False
         finally:
             await socket.disconnect()
         return result
+
+    async def toggle_switch(self, uid: str):
+        for key in self.database.memory.keys():
+            for device in self.database.memory[key]["entities"].keys():
+                entity = self.database.memory[key]["entities"][uid]
+                if (device == uid) or (entity["name"] == uid):
+
+                    value = entity["value"]
+
+                    socket = self.sockets[key]
+                    if value:
+                        await socket.turn_off_smart_switch(int(entity["entity_id"]))
+                        return "Off"
+                    else:
+                        await socket.turn_on_smart_switch(int(entity["entity_id"]))
+                        return "On"
 
     def fcm_callback(self, notification):
 
@@ -46,10 +63,10 @@ class MyClient(discord.Client):
 
         if ret.get("type") == "server":
             self.sockets[f"{ret['ip']}:{ret['port']}"] = RustSocket(
-                ret['ip'],
-                ret['port'],
-                ret['player_id'],
-                ret['player_token']
+                ret["ip"],
+                ret["port"],
+                ret["player_id"],
+                ret["player_token"]
             )
         elif ret.get("type") == "entity":
             result = asyncio.run(self.check_entity(self.sockets[ret["address"]], ret["entity_id"]))
@@ -79,10 +96,23 @@ class MyClient(discord.Client):
         print("Entities Check finished\n------")
 
     async def chat_handler(self, event: ChatEvent, server_key: str):
-        print(event.message)
+        text = event.message.message
+        args = text.split()
+
+        if args[0] == "!time":
+            socket: RustSocket = self.sockets[server_key]
+            time: RustTime = await socket.get_time()
+            await socket.send_team_message(f"Time is {time.time}")
+            await socket.send_team_message(f"Sunrise {time.sunrise}, Sunset {time.sunset}")
+
+        elif args[0] == "!info":
+            socket: RustSocket = self.sockets[server_key]
+            info = await socket.get_info()
+            await socket.send_team_message(f"{info.players}/{info.max_players} players online, {info.queued_players} in queue.")
 
     async def entity_handler(self, event: EntityEvent, server_key: str):
         print(event.type, event.entity_id, event.value)
+        self.database.memory[server_key]["entities"][str(event.entity_id)]["value"] = event.value
 
     async def rust_events_subscribe(self):
         print("Events subscribing")
@@ -91,7 +121,7 @@ class MyClient(discord.Client):
             socket: RustSocket = self.sockets[key]
 
             await socket.connect()
-            print(await socket.get_team_chat())
+            # print(await socket.get_team_chat())
 
             @socket.chat_event
             async def chat(event: ChatEvent):
@@ -109,21 +139,21 @@ class MyClient(discord.Client):
         print("Events subscribed")
 
     async def on_ready(self):
-        print('------')
-        print('Logged on as {0}!'.format(self.user))
-        print('------\nServers:')
+        print("------")
+        print("Logged on as {0}!".format(self.user))
+        print("------\nServers:")
         for guild in self.guilds:
             print(guild)
 
-        print('------\nSetting up rust+ features')
-        print("DataBase    ", end=' ')
+        print("------\nSetting up rust+ features")
+        print("DataBase    ", end=" ")
         try:
             self.database: DataBase = DataBase()
             print("=> OK!")
         except Exception as e:
             print("=> FAIL!")
 
-        print("Load Memory ", end=' ')
+        print("Load Memory ", end=" ")
         try:
             self.database.load_memory()
             try:
@@ -134,14 +164,14 @@ class MyClient(discord.Client):
         except:
             print("=> NO DUMP!")
 
-        print("FCM Manager ", end=' ')
+        print("FCM Manager ", end=" ")
         try:
             self.fcm_manager: FCM = FCM(fcm_details, callback=self.fcm_callback)
             self.fcm_manager.start()
             print("=> OK!")
         except Exception as e:
             print("=> FAIL!")
-        print('------')
+        print("------")
 
         await asyncio.sleep(30)
         await self.check_entities()
@@ -156,9 +186,9 @@ class MyClient(discord.Client):
 
             return
 
-        print(f'Message {message.content}')
+        print(f"Message {message.content}")
 
-        if message.content.startswith('memory'):
+        if message.content.startswith("memory"):
             await message.delete()
             await message.channel.send(json.dumps(self.database.memory, indent=4))
             return
@@ -170,19 +200,29 @@ class MyClient(discord.Client):
                 await message.channel.send(json.dumps(self.database.memory[key]["entities"], indent=4, sort_keys=True))
             return
 
-        elif message.content.startswith(f'save'):
+        elif message.content.startswith("save"):
             await message.delete()
             await message.channel.send("Saving Data")
             self.database.save_memory()
             await message.channel.send("Saved")
             return
 
-        elif message.content.startswith(f'terminate'):
+        elif message.content.startswith("terminate"):
             await message.delete()
             await message.channel.send("Shutting Down!")
             self.database.save_memory()
             self.fcm_manager.thread.join(timeout=1)
             sys.exit(0)
+
+        elif message.content.startswith("toggle"):
+            await message.delete()
+
+            try:
+                result = await self.toggle_switch(uid=message.content.split()[-1])
+                if not result: raise IndexError
+                await message.channel.send(f"Switch is {result}")
+            except:
+                await message.channel.send("Failed to toggle")
 
 
 intents = discord.Intents.default()
