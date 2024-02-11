@@ -2,4 +2,5 @@
 .venv/
 
 conf/rustplus.py.config.json
+conf/discord_memory.json
 conf/memory.json

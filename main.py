@@ -3,6 +3,7 @@ import time
 import sys, os
 
 import asyncio
+from typing import Optional, Union
 
 import discord
 from discord import Message, Intents
@@ -24,6 +25,11 @@ class MyClient(discord.Client):
         self.database: DataBase
         self.fcm_manager: FCM
         self.sockets: dict = {}
+
+    def get_channel_by_address(self, address: str):
+        uid = self.database.discord_memory[address]
+        channel = discord.utils.get(self.get_all_channels(), id=uid)
+        return channel
 
     @staticmethod
     async def check_entity(socket: RustSocket, entity_id: str):
@@ -99,6 +105,11 @@ class MyClient(discord.Client):
         text = event.message.message
         args = text.split()
 
+        if text[0] != "!":
+            if server_key in self.database.discord_memory.keys():
+                channel = self.get_channel_by_address(server_key)
+                await channel.send(f"{event.message.name}: {text}")
+
         if args[0] == "!time":
             socket: RustSocket = self.sockets[server_key]
             time: RustTime = await socket.get_time()
@@ -164,6 +175,13 @@ class MyClient(discord.Client):
         except:
             print("=> NO DUMP!")
 
+        print("Load Discord", end=" ")
+        try:
+            self.database.load_discord_memory()
+            print("=> OK!")
+        except:
+            print("=> NO DUMP!")
+
         print("FCM Manager ", end=" ")
         try:
             self.fcm_manager: FCM = FCM(fcm_details, callback=self.fcm_callback)
@@ -178,6 +196,9 @@ class MyClient(discord.Client):
         await asyncio.sleep(30)
         await self.rust_events_subscribe()
 
+        game = discord.Game("Rust")
+        await self.change_presence(status=discord.Status.idle, activity=game)
+
     async def on_message(self, message: Message):
         if message.author.bot:
             if message.author == self.user:
@@ -190,6 +211,9 @@ class MyClient(discord.Client):
 
         if message.content.startswith("memory"):
             await message.delete()
+            await message.channel.send("Discord Memory Dump")
+            await message.channel.send(json.dumps(self.database.discord_memory, indent=4))
+            await message.channel.send("Memory Dump")
             await message.channel.send(json.dumps(self.database.memory, indent=4))
             return
 
@@ -223,6 +247,22 @@ class MyClient(discord.Client):
                 await message.channel.send(f"Switch is {result}")
             except:
                 await message.channel.send("Failed to toggle")
+
+        elif message.content.startswith("bind"):
+            await message.delete()
+            try:
+                server = self.database.memory[message.content.split()[-1]]
+                self.database.discord_memory[f"{server['ip']}:{server['port']}"] = message.channel.id
+                await message.channel.send(f"Binded to server {server['ip']}:{server['port']}")
+            except:
+                await message.channel.send(f"No such server {message.content.split()[-1]}")
+
+        else:
+            if message.channel.id in self.database.discord_memory.values():
+                address = [i for i in self.database.discord_memory if self.database.discord_memory[i] == message.channel.id]
+                socket = self.sockets[address[0]]
+                print(socket, message.content, message.author.name)
+                await socket.send_team_message(f"{message.author.name}: {message.content}")
 
 
 intents = discord.Intents.default()

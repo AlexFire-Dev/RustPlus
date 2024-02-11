@@ -1,18 +1,27 @@
 import json
 
+import discord
+
 
 class DataBase:
     def __init__(self):
         self.memory: dict = {}
+        self.discord_memory: dict = {}
 
     def save_memory(self):
         with open("conf/memory.json", "w") as file:
             json.dump(self.memory, fp=file, indent=2)
+        with open("conf/discord_memory.json", "w") as file:
+            json.dump(self.discord_memory, fp=file, indent=2)
         print("Memory dumped")
 
     def load_memory(self):
         temp = json.load(open("conf/memory.json", "r"))
         self.memory = temp
+
+    def load_discord_memory(self):
+        temp = json.load(open("conf/discord_memory.json", "r"))
+        self.discord_memory = temp
 
     def add_record(self, notification: dict):
 
