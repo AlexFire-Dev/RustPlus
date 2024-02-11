@@ -49,7 +49,7 @@ class MyClient(discord.Client):
     async def toggle_switch(self, uid: str):
         for key in self.database.memory.keys():
             for device in self.database.memory[key]["entities"].keys():
-                entity = self.database.memory[key]["entities"][uid]
+                entity = self.database.memory[key]["entities"][device]
                 if (device == uid) or (entity["name"] == uid):
 
                     value = entity["value"]
@@ -105,7 +105,7 @@ class MyClient(discord.Client):
         text = event.message.message
         args = text.split()
 
-        if text[0] != "!":
+        if (text[0] != "!") and (text[0] != "#"):
             if server_key in self.database.discord_memory.keys():
                 channel = self.get_channel_by_address(server_key)
                 await channel.send(f"{event.message.name}: {text}")
@@ -113,13 +113,21 @@ class MyClient(discord.Client):
         if args[0] == "!time":
             socket: RustSocket = self.sockets[server_key]
             time: RustTime = await socket.get_time()
-            await socket.send_team_message(f"Time is {time.time}")
-            await socket.send_team_message(f"Sunrise {time.sunrise}, Sunset {time.sunset}")
+            await socket.send_team_message(f"# Time is {time.time}")
+            await socket.send_team_message(f"# Sunrise {time.sunrise}, Sunset {time.sunset}")
 
         elif args[0] == "!info":
             socket: RustSocket = self.sockets[server_key]
             info = await socket.get_info()
-            await socket.send_team_message(f"{info.players}/{info.max_players} players online, {info.queued_players} in queue.")
+            await socket.send_team_message(f"# {info.players}/{info.max_players} players online, {info.queued_players} in queue.")
+
+        elif args[0] == "!toggle":
+            socket: RustSocket = self.sockets[server_key]
+            try:
+                res = await self.toggle_switch(args[-1])
+                await socket.send_team_message(f"# {args[-1]} is now {res}")
+            except Exception as e:
+                await socket.send_team_message(f"# failed to toggle {args[-1]}")
 
     async def entity_handler(self, event: EntityEvent, server_key: str):
         print(event.type, event.entity_id, event.value)
@@ -150,6 +158,8 @@ class MyClient(discord.Client):
         print("Events subscribed")
 
     async def on_ready(self):
+        await self.change_presence(status=discord.Status.dnd)
+
         print("------")
         print("Logged on as {0}!".format(self.user))
         print("------\nServers:")
@@ -197,14 +207,13 @@ class MyClient(discord.Client):
         await self.rust_events_subscribe()
 
         game = discord.Game("Rust")
-        await self.change_presence(status=discord.Status.idle, activity=game)
+        await self.change_presence(status=discord.Status.online, activity=game)
 
     async def on_message(self, message: Message):
         if message.author.bot:
-            if message.author == self.user:
-                await asyncio.sleep(60)
-                await message.delete()
-
+            # if message.author == self.user:
+            #     await asyncio.sleep(60)
+            #     await message.delete()
             return
 
         print(f"Message {message.content}")
@@ -245,8 +254,8 @@ class MyClient(discord.Client):
                 result = await self.toggle_switch(uid=message.content.split()[-1])
                 if not result: raise IndexError
                 await message.channel.send(f"Switch is {result}")
-            except:
-                await message.channel.send("Failed to toggle")
+            except Exception as e:
+                await message.channel.send(f"Failed to toggle {message.content.split()[-1]}")
 
         elif message.content.startswith("bind"):
             await message.delete()
@@ -257,12 +266,25 @@ class MyClient(discord.Client):
             except:
                 await message.channel.send(f"No such server {message.content.split()[-1]}")
 
+        elif message.content.startswith("rename"):
+            await message.delete()
+            if message.channel.id in self.database.discord_memory.values():
+                try:
+                    args = message.content.split()
+                    address = [i for i in self.database.discord_memory if
+                               self.database.discord_memory[i] == message.channel.id][0]
+                    name = self.database.memory[address]["entities"][args[1]]["name"]
+                    self.database.memory[address]["entities"][args[1]]["name"] = args[2]
+                    await message.channel.send(f"Entity {args[1]} name: {name} -> {args[2]}")
+                except Exception as e:
+                    await message.channel.send(f"Failed to change Entity's {args[1]} name")
+
         else:
             if message.channel.id in self.database.discord_memory.values():
                 address = [i for i in self.database.discord_memory if self.database.discord_memory[i] == message.channel.id]
                 socket = self.sockets[address[0]]
-                print(socket, message.content, message.author.name)
-                await socket.send_team_message(f"{message.author.name}: {message.content}")
+
+                await socket.send_team_message(f"# {message.author.display_name}: {message.content}")
 
 
 intents = discord.Intents.default()
